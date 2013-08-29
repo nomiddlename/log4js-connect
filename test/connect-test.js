@@ -1,8 +1,7 @@
 /* jshint maxparams:7 */
 "use strict";
 var vows = require('vows')
-, assert = require('assert')
-, levels = require('../lib/levels');
+, assert = require('assert');
 
 function MockLogger() {
 
@@ -12,12 +11,6 @@ function MockLogger() {
   this.log = function(level, message, exception) {
     that.messages.push({ level: level, message: message });
   };
-
-  this.isLevelEnabled = function(level) {
-    return level.isGreaterThanOrEqualTo(that.level);
-  };
-  
-  this.level = levels.TRACE;
 
 }
 
@@ -36,8 +29,10 @@ function MockRequest(remoteAddr, method, originalUrl, headers) {
   });
 }
 
-function MockResponse() {
+function MockResponse(statusCode) {
   
+  this.statusCode = statusCode;
+
   this.end = function(chunk, encoding) {    
   };
 
@@ -57,18 +52,18 @@ function request(cl, method, url, code, reqHeaders, resHeaders) {
 vows.describe('log4js connect logger').addBatch({
   'getConnectLoggerModule': {
     topic: function() {
-      var clm = require('../lib/connect-logger');
+      var clm = require('../lib/index');
       return clm;
     },
     
     'should return a "connect logger" factory' : function(clm) {
-      assert.isObject(clm);
+      assert.isFunction(clm);
     },
 
     'take a log4js logger and return a "connect logger"' : {
       topic: function(clm) {
         var ml = new MockLogger();
-        var cl = clm.connectLogger(ml);
+        var cl = clm(ml);
         return cl;
       },
       
@@ -80,7 +75,7 @@ vows.describe('log4js connect logger').addBatch({
     'log events' : {
       topic: function(clm) {
         var ml = new MockLogger();
-        var cl = clm.connectLogger(ml);
+        var cl = clm(ml);
         request(cl, 'GET', 'http://url', 200);
         return ml.messages;
       },
@@ -88,7 +83,7 @@ vows.describe('log4js connect logger').addBatch({
       'check message': function(messages) {
         assert.isArray(messages);
         assert.equal(messages.length, 1);
-        assert.ok(levels.INFO.isEqualTo(messages[0].level));
+        assert.equal("info", messages[0].level);
         assert.include(messages[0].message, 'GET');
         assert.include(messages[0].message, 'http://url');
         assert.include(messages[0].message, 'my.remote.addr');
@@ -96,26 +91,10 @@ vows.describe('log4js connect logger').addBatch({
       }
     },
 
-    'log events with level below logging level' : {
+    'log events with custom format' : {
       topic: function(clm) {
         var ml = new MockLogger();
-        ml.level = levels.FATAL;
-        var cl = clm.connectLogger(ml);
-        request(cl, 'GET', 'http://url', 200);
-        return ml.messages;
-      },
-      
-      'check message': function(messages) {
-        assert.isArray(messages);
-        assert.isEmpty(messages);
-      }
-    },
-
-    'log events with non-default level and custom format' : {
-      topic: function(clm) {
-        var ml = new MockLogger();
-        ml.level = levels.INFO;
-        var cl = clm.connectLogger(ml, { level: levels.INFO, format: ':method :url' } );
+        var cl = clm(ml, ':method :url');
         request(cl, 'GET', 'http://url', 200);
         return ml.messages;
       },
@@ -123,29 +102,15 @@ vows.describe('log4js connect logger').addBatch({
       'check message': function(messages) {
         assert.isArray(messages);
         assert.equal(messages.length, 1);
-        assert.ok(levels.INFO.isEqualTo(messages[0].level));
+        assert.equal(messages[0].level, 'info');
         assert.equal(messages[0].message, 'GET http://url');
-      }
-    },
-
-    'logger with options as string': {
-      topic: function(clm) {
-        var ml = new MockLogger();
-        ml.level = levels.INFO;
-        var cl = clm.connectLogger(ml, ':method :url');
-        request(cl, 'POST', 'http://meh', 200);
-        return ml.messages;
-      },
-      'should use the passed in format': function(messages) {
-        assert.equal(messages[0].message, 'POST http://meh');
       }
     },
 
     'auto log levels': {
       topic: function(clm) {
         var ml = new MockLogger();
-        ml.level = levels.INFO;
-        var cl = clm.connectLogger(ml, { level: 'auto', format: ':method :url' });
+        var cl = clm(ml, ':method :url');
         request(cl, 'GET', 'http://meh', 200);
         request(cl, 'GET', 'http://meh', 201);
         request(cl, 'GET', 'http://meh', 302);
@@ -155,42 +120,27 @@ vows.describe('log4js connect logger').addBatch({
       },
 
       'should use INFO for 2xx': function(messages) {
-        assert.ok(levels.INFO.isEqualTo(messages[0].level));
-        assert.ok(levels.INFO.isEqualTo(messages[1].level));
+        assert.equal(messages[0].level, 'info');
+        assert.equal(messages[1].level, 'info');
       },
 
       'should use WARN for 3xx': function(messages) {
-        assert.ok(levels.WARN.isEqualTo(messages[2].level));
+        assert.equal(messages[2].level, 'warn');
       },
 
       'should use ERROR for 4xx': function(messages) {
-        assert.ok(levels.ERROR.isEqualTo(messages[3].level));
+        assert.equal(messages[3].level, 'error');
       },
 
       'should use ERROR for 5xx': function(messages) {
-        assert.ok(levels.ERROR.isEqualTo(messages[4].level));
-      }
-    },
-
-    'format using a function': {
-      topic: function(clm) {
-        var ml = new MockLogger();
-        ml.level = levels.INFO;
-        var cl = clm.connectLogger(ml, function(req, res, formatFn) { return "I was called"; });
-        request(cl, 'GET', 'http://blah', 200);
-        return ml.messages;
-      },
-
-      'should call the format function': function(messages) {
-        assert.equal(messages[0].message, 'I was called');
+        assert.equal(messages[4].level, 'error');
       }
     },
 
     'format that includes request headers': {
       topic: function(clm) {
         var ml = new MockLogger();
-        ml.level = levels.INFO;
-        var cl = clm.connectLogger(ml, ':req[Content-Type]');
+        var cl = clm(ml, ':req[Content-Type]');
         request(
           cl, 
           'GET', 'http://blah', 200, 
@@ -206,8 +156,7 @@ vows.describe('log4js connect logger').addBatch({
     'format that includes response headers': {
       topic: function(clm) {
         var ml = new MockLogger();
-        ml.level = levels.INFO;
-        var cl = clm.connectLogger(ml, ':res[Content-Type]');
+        var cl = clm(ml, ':res[Content-Type]');
         request(
           cl,
           'GET', 'http://blah', 200,
@@ -220,7 +169,63 @@ vows.describe('log4js connect logger').addBatch({
       'should output the response header': function(messages) {
         assert.equal(messages[0].message, 'application/cheese');
       }
-    }                                          
-    
+    },
+
+    'nolog RegExp' : {
+      topic: function(clm) {
+        var ml = new MockLogger();
+        var cl = clm(ml, /\.gif|\.jpe?g/);
+        return {cl: cl, ml: ml};
+      },
+
+      'check unmatch url request (png)': {
+        topic: function(d){
+          var req = new MockRequest('my.remote.addr', 'GET', 'http://url/hoge.png'); // not gif
+          var res = new MockResponse(200);
+          d.cl(req, res, function() { });
+          res.end('chunk', 'encoding');
+          return d.ml.messages;
+        }, 
+        'check message': function(messages){
+          assert.isArray(messages);
+          assert.equal(messages.length, 1);
+          assert.equal(messages[0].level, 'info');
+          assert.include(messages[0].message, 'GET');
+          assert.include(messages[0].message, 'http://url');
+          assert.include(messages[0].message, 'my.remote.addr');
+          assert.include(messages[0].message, '200');
+          messages.pop();
+        }
+      },
+
+      'check match url request (gif)': {
+        topic: function(d) {
+          var req = new MockRequest('my.remote.addr', 'GET', 'http://url/hoge.gif'); // gif
+          var res = new MockResponse(200);
+          d.cl(req, res, function() { });
+          res.end('chunk', 'encoding');
+          return d.ml.messages;
+        }, 
+        'check message': function(messages) {
+          assert.isArray(messages);
+          assert.equal(messages.length, 0);
+        }
+      },
+
+      'check match url request (jpeg)': {
+        topic: function(d) {
+          var req = new MockRequest('my.remote.addr', 'GET', 'http://url/hoge.jpeg'); // gif
+          var res = new MockResponse(200);
+          d.cl(req, res, function() { });
+          res.end('chunk', 'encoding');
+          return d.ml.messages;
+        }, 
+        'check message': function(messages) {
+          assert.isArray(messages);
+          assert.equal(messages.length, 0);
+        }
+      }
+    }
+
   }
 }).export(module);

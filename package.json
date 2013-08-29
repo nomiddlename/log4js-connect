@@ -2,9 +2,9 @@
   "name": "log4js-connect",
   "version": "0.0.0",
   "description": "Connect middleware for logging http requests via log4js",
-  "main": "index.js",
+  "main": "lib/index.js",
   "scripts": {
-    "test": "vows tests.js"
+    "test": "vows"
   },
   "repository": "https://github.com/nomiddlename/log4js-connect.git",
   "keywords": [
