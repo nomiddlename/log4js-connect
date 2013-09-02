@@ -1,5 +1,5 @@
-/* jshint maxparams:7 */
 "use strict";
+/* jshint maxparams:7 */
 var should = require('should');
 
 function MockLogger() {

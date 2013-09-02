@@ -4,3 +4,4 @@ connectLogger now takes three arguments instead of an options object
 level is now always 'auto': info for status 1xx, 2xx; warn for 3xx; error for 4xx, 5xx
 no need to specify a level for connect logger
 module now returns a function (var connectLogger = require('log4js-connect')(log4jslogger);)
+no longer checks to see if already mounted (was causing problems if you actually wanted to app.use two different loggers)
