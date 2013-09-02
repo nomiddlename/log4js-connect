@@ -1,14 +1,13 @@
 /* jshint maxparams:7 */
 "use strict";
-var vows = require('vows')
-, assert = require('assert');
+var should = require('should');
 
 function MockLogger() {
 
   var that = this;
   this.messages = [];
   
-  this.log = function(level, message, exception) {
+  this.log = function(level, message) {
     that.messages.push({ level: level, message: message });
   };
 
@@ -49,183 +48,140 @@ function request(cl, method, url, code, reqHeaders, resHeaders) {
   res.end('chunk','encoding');
 }
 
-vows.describe('log4js connect logger').addBatch({
-  'getConnectLoggerModule': {
-    topic: function() {
-      var clm = require('../lib/index');
-      return clm;
-    },
+describe('log4js connect logger', function() {
+  var clm = require('../lib/index');
+  
+  it('should return a "connect logger" factory', function() {
+    clm.should.be.a('function');
+  });
+
+  describe('when passed a log4js logger', function() {
+    var ml = new MockLogger()
+    , cl = clm(ml);
+
+    it('should return a "connect logger"', function() {
+      cl.should.be.a('function');
+    });
     
-    'should return a "connect logger" factory' : function(clm) {
-      assert.isFunction(clm);
-    },
+    it('should log events', function() {
+      request(cl, 'GET', 'http://url', 200);
 
-    'take a log4js logger and return a "connect logger"' : {
-      topic: function(clm) {
-        var ml = new MockLogger();
-        var cl = clm(ml);
-        return cl;
-      },
+      ml.messages.should.be.an.instanceOf(Array);
+      ml.messages.should.have.length(1);
+      ml.messages[0].level.should.eql('info');
+      ml.messages[0].message.should.include('GET');
+      ml.messages[0].message.should.include('http://url');
+      ml.messages[0].message.should.include('my.remote.addr');
+      ml.messages[0].message.should.include('200');
+    });
+  });
+
+  describe('when passed a custom format', function() {
+    var ml = new MockLogger()
+    , cl = clm(ml, ':method :url');
+
+    it('should log events with custom format', function() {
+      request(cl, 'GET', 'http://url', 200);
       
-      'should return a "connect logger"': function(cl) {
-        assert.isFunction(cl);
-      }
-    },
+      ml.messages.should.be.an.instanceOf(Array);
+      ml.messages.should.have.length(1);
+      ml.messages[0].level.should.eql('info');
+      ml.messages[0].message.should.eql('GET http://url');
+    });
+  });
+
+  describe('when requests have different status codes', function() {
+    var ml = new MockLogger()
+    , cl = clm(ml, ':method :url');
+
+    before(function() {
+      request(cl, 'GET', 'http://meh', 200);
+      request(cl, 'GET', 'http://meh', 201);
+      request(cl, 'GET', 'http://meh', 302);
+      request(cl, 'GET', 'http://meh', 404);
+      request(cl, 'GET', 'http://meh', 500);
+    });
     
-    'log events' : {
-      topic: function(clm) {
-        var ml = new MockLogger();
-        var cl = clm(ml);
-        request(cl, 'GET', 'http://url', 200);
-        return ml.messages;
-      },
+    it('should use INFO for 2xx', function() {
+      ml.messages[0].level.should.eql('info');
+      ml.messages[1].level.should.eql('info');
+    });
 
-      'check message': function(messages) {
-        assert.isArray(messages);
-        assert.equal(messages.length, 1);
-        assert.equal("info", messages[0].level);
-        assert.include(messages[0].message, 'GET');
-        assert.include(messages[0].message, 'http://url');
-        assert.include(messages[0].message, 'my.remote.addr');
-        assert.include(messages[0].message, '200');
-      }
-    },
+    it('should use WARN for 3xx', function() {
+      ml.messages[2].level.should.eql('warn');
+    });
 
-    'log events with custom format' : {
-      topic: function(clm) {
-        var ml = new MockLogger();
-        var cl = clm(ml, ':method :url');
-        request(cl, 'GET', 'http://url', 200);
-        return ml.messages;
-      },
+    it('should use ERROR for 4xx', function() {
+      ml.messages[3].level.should.eql('error');
+    });
+
+    it('should use ERROR for 5xx', function() {
+      ml.messages[4].level.should.eql('error');
+    });
+  });
+
+  describe('when the format includes request headers', function() {
+    var ml = new MockLogger()
+    , cl = clm(ml, ':req[Content-Type]');
+
+    before(function() {
+      request(
+        cl, 
+        'GET', 'http://blah', 200, 
+        { 'Content-Type': 'application/json' }
+      );
+    });
+
+    it('should output the request header', function() {
+      ml.messages[0].message.should.eql('application/json');
+    });
+  });
+
+  describe('when the format includes response headers', function() {
+    var ml = new MockLogger()
+    , cl = clm(ml, ':res[Content-Type]');
+
+    before(function() {
+      request(
+        cl,
+        'GET', 'http://blah', 200,
+        null,
+        { 'Content-Type': 'application/cheese' }
+      );
+    });
+
+    it('should output the response header', function() {
+      ml.messages[0].message.should.eql('application/cheese');
+    });
+  });
+
+  describe('when passed a nolog RegExp', function() {
+    var ml = new MockLogger()
+    , cl = clm(ml, /\.gif|\.jpe?g/);
+
+    afterEach(function() { ml.messages.pop(); });
+
+    it('should log requests that do not match the regexp', function() {
+      request(cl, 'GET', 'http://url/hoge.png', 200);
       
-      'check message': function(messages) {
-        assert.isArray(messages);
-        assert.equal(messages.length, 1);
-        assert.equal(messages[0].level, 'info');
-        assert.equal(messages[0].message, 'GET http://url');
-      }
-    },
+      ml.messages.should.have.length(1);
+      ml.messages[0].level.should.eql('info');
+      ml.messages[0].message.should.include('GET');
+      ml.messages[0].message.should.include('http://url/hoge.png');
+      ml.messages[0].message.should.include('my.remote.addr');
+      ml.messages[0].message.should.include('200');
+    });
 
-    'auto log levels': {
-      topic: function(clm) {
-        var ml = new MockLogger();
-        var cl = clm(ml, ':method :url');
-        request(cl, 'GET', 'http://meh', 200);
-        request(cl, 'GET', 'http://meh', 201);
-        request(cl, 'GET', 'http://meh', 302);
-        request(cl, 'GET', 'http://meh', 404);
-        request(cl, 'GET', 'http://meh', 500);
-        return ml.messages;
-      },
+    it('should not log requests that do match the regexp (gif)', function() {
+      request(cl, 'GET', 'http://url/hoge.gif', 200);
+      
+      ml.messages.should.have.length(0);
+    });
 
-      'should use INFO for 2xx': function(messages) {
-        assert.equal(messages[0].level, 'info');
-        assert.equal(messages[1].level, 'info');
-      },
+    it('should not log requests that do match the regexp (jpeg)', function() {
+      request(cl, 'GET', 'http://url/hoge.jpeg', 200);
 
-      'should use WARN for 3xx': function(messages) {
-        assert.equal(messages[2].level, 'warn');
-      },
-
-      'should use ERROR for 4xx': function(messages) {
-        assert.equal(messages[3].level, 'error');
-      },
-
-      'should use ERROR for 5xx': function(messages) {
-        assert.equal(messages[4].level, 'error');
-      }
-    },
-
-    'format that includes request headers': {
-      topic: function(clm) {
-        var ml = new MockLogger();
-        var cl = clm(ml, ':req[Content-Type]');
-        request(
-          cl, 
-          'GET', 'http://blah', 200, 
-          { 'Content-Type': 'application/json' }
-        );
-        return ml.messages;
-      },
-      'should output the request header': function(messages) {
-        assert.equal(messages[0].message, 'application/json');
-      }
-    },
-
-    'format that includes response headers': {
-      topic: function(clm) {
-        var ml = new MockLogger();
-        var cl = clm(ml, ':res[Content-Type]');
-        request(
-          cl,
-          'GET', 'http://blah', 200,
-          null,
-          { 'Content-Type': 'application/cheese' }
-        );
-        return ml.messages;
-      },
-
-      'should output the response header': function(messages) {
-        assert.equal(messages[0].message, 'application/cheese');
-      }
-    },
-
-    'nolog RegExp' : {
-      topic: function(clm) {
-        var ml = new MockLogger();
-        var cl = clm(ml, /\.gif|\.jpe?g/);
-        return {cl: cl, ml: ml};
-      },
-
-      'check unmatch url request (png)': {
-        topic: function(d){
-          var req = new MockRequest('my.remote.addr', 'GET', 'http://url/hoge.png'); // not gif
-          var res = new MockResponse(200);
-          d.cl(req, res, function() { });
-          res.end('chunk', 'encoding');
-          return d.ml.messages;
-        }, 
-        'check message': function(messages){
-          assert.isArray(messages);
-          assert.equal(messages.length, 1);
-          assert.equal(messages[0].level, 'info');
-          assert.include(messages[0].message, 'GET');
-          assert.include(messages[0].message, 'http://url');
-          assert.include(messages[0].message, 'my.remote.addr');
-          assert.include(messages[0].message, '200');
-          messages.pop();
-        }
-      },
-
-      'check match url request (gif)': {
-        topic: function(d) {
-          var req = new MockRequest('my.remote.addr', 'GET', 'http://url/hoge.gif'); // gif
-          var res = new MockResponse(200);
-          d.cl(req, res, function() { });
-          res.end('chunk', 'encoding');
-          return d.ml.messages;
-        }, 
-        'check message': function(messages) {
-          assert.isArray(messages);
-          assert.equal(messages.length, 0);
-        }
-      },
-
-      'check match url request (jpeg)': {
-        topic: function(d) {
-          var req = new MockRequest('my.remote.addr', 'GET', 'http://url/hoge.jpeg'); // gif
-          var res = new MockResponse(200);
-          d.cl(req, res, function() { });
-          res.end('chunk', 'encoding');
-          return d.ml.messages;
-        }, 
-        'check message': function(messages) {
-          assert.isArray(messages);
-          assert.equal(messages.length, 0);
-        }
-      }
-    }
-
-  }
-}).export(module);
+      ml.messages.should.have.length(0);
+    });
+  });
+});

@@ -4,7 +4,7 @@
   "description": "Connect middleware for logging http requests via log4js",
   "main": "lib/index.js",
   "scripts": {
-    "test": "vows"
+    "test": "mocha"
   },
   "repository": "https://github.com/nomiddlename/log4js-connect.git",
   "keywords": [
@@ -16,6 +16,7 @@
   "author": "",
   "license": "Apache",
   "devDependencies": {
-    "vows": "~0.7.0"
+    "mocha": "~1.12.1",
+    "should": "~1.2.2"
   }
 }
