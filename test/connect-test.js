@@ -40,11 +40,15 @@ function MockResponse(statusCode) {
 
 }
 
-function request(cl, method, url, code, reqHeaders, resHeaders) {
+function request(cl, method, url, code, reqHeaders, resHeaders, reasonPhrase) {
   var req = new MockRequest('my.remote.addr', method, url, reqHeaders);
   var res = new MockResponse();
   cl(req, res, function() {});
-  res.writeHead(code, resHeaders);
+  if (reasonPhrase) {
+    res.writeHead(code, reasonPhrase, resHeaders);
+  } else {
+    res.writeHead(code, resHeaders);
+  }
   res.end('chunk','encoding');
 }
 
@@ -182,6 +186,26 @@ describe('log4js connect logger', function() {
       request(cl, 'GET', 'http://url/hoge.jpeg', 200);
 
       ml.messages.should.have.length(0);
+    });
+  });
+
+  describe('when the three argument form of res.writeHead is used', function() {
+    var ml = new MockLogger()
+    , cl = new clm(ml, ':res[Content-Type]');
+
+    before(function() {
+      request(
+        cl, 
+        'GET', 'http://url', 200, 
+        null, 
+        { 'Content-Type': 'application/json' },
+        'OK'
+      );
+    });
+
+    it('should still log the headers', function() {
+      ml.messages.should.have.length(1);
+      ml.messages[0].message.should.include('application/json');
     });
   });
 });
