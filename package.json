@@ -10,6 +10,7 @@
   "keywords": [
     "log4js",
     "connect",
+    "express",
     "logging",
     "http"
   ],
@@ -18,5 +19,8 @@
   "devDependencies": {
     "mocha": "~1.12.1",
     "should": "~1.2.2"
+  },
+  "dependencies": {
+    "debug": "~0.7.2"
   }
 }

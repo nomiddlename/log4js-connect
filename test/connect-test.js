@@ -7,9 +7,11 @@ function MockLogger() {
   var that = this;
   this.messages = [];
   
-  this.log = function(level, message) {
-    that.messages.push({ level: level, message: message });
-  };
+  ["info", "warn", "error"].forEach(function(level) {
+    that[level] = function(message) {
+      that.messages.push({ level: level, message: message });
+    };
+  });
 
 }
 
