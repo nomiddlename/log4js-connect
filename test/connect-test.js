@@ -193,7 +193,7 @@ describe('log4js connect logger', function() {
 
   describe('when the three argument form of res.writeHead is used', function() {
     var ml = new MockLogger()
-    , cl = new clm(ml, ':res[Content-Type]');
+    , cl = clm(ml, ':res[Content-Type]');
 
     before(function() {
       request(
